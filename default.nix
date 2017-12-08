@@ -1,0 +1,36 @@
+{ package ? "diet", compiler ? "ghc822" }:
+let
+  fetchNixpkgs = import ./nix/fetchNixpkgs.nix;
+  nixpkgs = fetchNixpkgs {
+    rev = "597f819bc3dc1097a8daea632b51a7c065127b1f";
+    sha256 = "1xzrgvhf0884s2ic88p7z14wzdp5sa454f028l5jw3290sd391bi";
+  };
+  pkgs = import nixpkgs { config = {}; };
+  inherit (pkgs) haskell;
+  
+  overrides = haskell.packages.${compiler}.override {
+    overrides = self: super:
+    with haskell.lib;
+    with { cp = file: (self.callPackage (./nix/haskell + "/${file}") {}); };
+
+    {
+      mkDerivation = args: super.mkDerivation (args // {
+        doCheck = pkgs.lib.elem args.pname [ "diet" "quickcheck-classes" ]; 
+        doHaddock = false;
+      });
+      quickcheck-classes = cp "quickcheck-classes.nix";
+      diet               = cp "diet.nix"; 
+    };
+  };
+in rec {
+  drv = overrides.${package};
+  diet = if pkgs.lib.inNixShell then drv.env else drv;
+}
+
+#  f = import ./nix/diet.nix;
+  
+#  haskellPackages = pkgs.haskell.packages.${compiler};
+
+#  drv = haskellPackages.callPackage f {};
+#in
+#  if pkgs.lib.inNixShell then drv.env else drv

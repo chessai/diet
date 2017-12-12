@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE EmptyDataDecls      #-}
 {-# LANGUAGE GADTs               #-}
@@ -22,11 +23,19 @@ module Data.Diet.Set
  , null
  , member
  , notMember
- , size
+ --, size
 
    -- * Conversion
  , toList
  , fromList
+   
+   -- * Folds
+ , fold
+ , foldMap
+ , foldr
+ , foldr'
+ , foldl
+ , foldl'
  ) where
 
 import           Data.Diet.Internal.Debug
@@ -34,13 +43,12 @@ import           Data.Diet.Internal.Interval.Discrete (Interval (..))
 import qualified Data.Diet.Internal.Interval.Discrete as I
 import           Data.Diet.Internal.Nat
 import qualified Data.Diet.Internal.Nat               as N
-import           Data.Foldable                        (Foldable)
 import           Data.List                            (sort)
-import qualified Data.List                            as L
 import           Data.Monoid
 import qualified Data.Semigroup                       as S
 import qualified GHC.Exts                             as GHCExts
-import           Prelude                              hiding (null)
+import           Prelude                              hiding (foldMap, foldl,
+                                                       foldl', foldr, null)
 
 select :: Ord a => a -> a -> p -> p -> p -> p
 select x y lt eq gt
@@ -68,13 +76,13 @@ data Set a where
   Set :: Diet n a -> Set a
 
 instance (Eq a) => Eq (Set a) where
-  t == t' = (size t == size t') && (toList t == toList t')
+  t == t' = toList t == toList t' -- && (size t == size t')
 
 instance (Ord a) => Ord (Set a) where
   compare t t' = compare (toList t) (toList t')
 
 instance (Ord a) => Monoid (Set a) where
-  mempty = empty
+  mempty  = empty
   mappend = union
 
 instance (Ord a) => S.Semigroup (Set a) where
@@ -165,25 +173,25 @@ delete x (Set set) = search set Set shrink
     mrg3r keep a b (BR (D2 c d e)) f (H g) = keep (d2 a b (d3 c d e f g))
 
 union :: forall a. Ord a => Set a -> Set a -> Set a
-union t t'
+union t t' 
   | t < t' = onion t' t
   | otherwise = onion t t'
   where
     onion :: Set a -> Set a -> Set a
-    onion u v = L.foldl' (flip insert) u (toList v)
+    onion u v = foldl' (flip insert) u v
 
 empty :: Set a
 empty = Set LF
 
 singleton :: (Ord a) => Interval a -> Set a
-singleton x = insert x empty
+singleton x = Set (BR (D2 LF x LF))
 
 null :: Set a -> Bool
 null (Set LF) = True
 null _        = False
 
-size :: Set a -> Nat
-size = L.foldl' (\c _ -> c N.+ (S Z)) Z
+--size :: Set a -> Nat
+--size = foldl' (\_ c -> c N.+ (S Z)) Z
 
 member :: forall a. Ord a => Interval a -> Set a -> Bool
 member x (Set set) = mem set
@@ -197,13 +205,38 @@ notMember :: forall a. Ord a => Interval a -> Set a -> Bool
 notMember x s = not $ member x s
 
 fromList :: forall a. Ord a => [Interval a] -> Set a
-fromList = L.foldl' (flip insert) empty
+fromList [] = Set LF
+fromList (!x:xs) = insert x $ fromList xs
 
 toList :: Set a -> [Interval a]
-toList = foldr (\x y -> (pure x) : y) []
+toList = foldMap (\x -> [x])
 
-instance Foldable Set where
-  foldMap = hole
+fold :: (Monoid a, Ord a) => Set a -> Interval a
+fold = foldMap id
+
+foldMap :: forall m a. Monoid m => (Interval a -> m) -> Set a -> m
+foldMap f (Set set) = fm set
+  where
+    fm :: forall n. Diet n a -> m
+    fm (BR (D2 a b c))     = fm a <> f b <> fm c
+    fm (BR (D3 a b c d e)) = fm a <> f b <> fm c <> f d <> fm e
+    fm LF                  = mempty
+
+-- | lazy foldr
+foldr :: (Interval a -> b -> b) -> b -> Set a -> b
+foldr f z s = appEndo (foldMap (Endo . f) s) z
+
+-- | strict foldr
+foldr' :: (Interval a -> b -> b) -> b -> Set a -> b
+foldr' f !z s = foldr f z s
+
+-- | lazy foldl
+foldl :: (a -> Interval b -> a) -> a -> Set b -> a
+foldl f z s = appEndo (getDual (foldMap (Dual . Endo . flip f) s)) z
+
+-- | strict foldl
+foldl' :: (a -> Interval b -> a) -> a -> Set b -> a
+foldl' f !z s = foldl f z s 
 
 instance Show a => Show (Set a) where
   showsPrec n d = showParen (n > 10) $ showString "fromList " . shows (toList d)

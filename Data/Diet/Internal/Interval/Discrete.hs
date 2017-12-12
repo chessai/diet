@@ -9,7 +9,9 @@ module Data.Diet.Internal.Interval.Discrete
   , (+/-)
   , interval
   , valid
+  , invalid
   , singleton
+  , empty 
   , inf
   , sup
   , singular
@@ -50,17 +52,19 @@ import           Control.Monad     (guard)
 import           Data.Data
 import           Data.Distributive
 import           Data.Semigroup    (Semigroup (..))
-#if __GLASGOW_HASKELL__ >= 704
 import           GHC.Generics
-#endif
 import           Prelude           hiding (map)
 
-data Interval a = I !a !a
+data Interval a = I !a !a | Empty
   deriving (Eq, Ord, Data, Typeable, Generic, Generic1)
 
 instance Ord a => Semigroup (Interval a) where
   (<>) = hull
   {-# INLINE (<>) #-}
+
+instance Ord a => Monoid (Interval a) where
+  mempty = empty
+  mappend = (<>)
 
 instance Functor Interval where
   fmap f (I a b) = I (f a) (f b)
@@ -116,6 +120,10 @@ interval a b
   | otherwise = I b a
 {-# INLINE interval #-}
 
+empty :: Interval a
+empty = Empty
+{-# INLINE empty #-}
+
 -- | test whether or not an Interval is valid
 --
 -- >>> valid (1 ... 5)
@@ -126,6 +134,16 @@ interval a b
 valid :: Ord a => Interval a -> Bool
 valid x = inf x <= sup x
 {-# INLINE valid #-}
+
+-- | opposite of valid
+-- >>> invalid (1 ... 5)
+-- False
+--
+-- >>> invalid (5 ... 1)
+-- True
+invalid :: Ord a => Interval a -> Bool
+invalid = not . valid
+{-# INLINE invalid #-}
 
 -- | A degenerate interval
 --
@@ -177,8 +195,8 @@ toList (I a b) = [a..b]
 --
 -- >>> width (singleton 1)
 -- 0
-width :: Num a => Interval a -> a
-width (I a b) = b - a
+width :: (Enum a, Num a) => Interval a -> a
+width (I a b) = succ $ b - a
 {-# INLINE width #-}
 
 -- | Magnitude

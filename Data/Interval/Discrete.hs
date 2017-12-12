@@ -3,7 +3,7 @@
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE Rank2Types         #-}
 
-module Data.Diet.Interval.Discrete
+module Data.Interval.Discrete
   ( Interval(..)
   , (...)
   , (+/-)

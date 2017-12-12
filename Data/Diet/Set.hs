@@ -23,7 +23,7 @@ module Data.Diet.Set
  , null
  , member
  , notMember
- --, size
+ , size
 
    -- * Conversion
  , toList
@@ -39,8 +39,8 @@ module Data.Diet.Set
  ) where
 
 import           Data.Diet.Internal.Debug
-import           Data.Diet.Interval.Discrete (Interval (..))
-import qualified Data.Diet.Interval.Discrete as I
+import           Data.Interval.Discrete (Interval (..))
+import qualified Data.Interval.Discrete as I
 import           Data.Diet.Internal.Nat
 import qualified Data.Diet.Internal.Nat               as N
 import           Data.List                            (sort)
@@ -172,6 +172,10 @@ delete x (Set set) = search set Set shrink
     mrg3r keep a b (BR (D3 c d e f g)) h (H i) = keep (d3 a b (d2 c d e) f (d2 g h i))
     mrg3r keep a b (BR (D2 c d e)) f (H g) = keep (d2 a b (d3 c d e f g))
 
+-- This implementation is subpar. Currently it only
+-- ensures that the smaller of the two Sets is
+-- garbage collected, which will give at least some
+-- performance boost.
 union :: forall a. Ord a => Set a -> Set a -> Set a
 union t t' 
   | t < t' = onion t' t
@@ -190,8 +194,9 @@ null :: Set a -> Bool
 null (Set LF) = True
 null _        = False
 
---size :: Set a -> Nat
---size = foldl' (\_ c -> c N.+ (S Z)) Z
+-- not even that useful
+size :: Set a -> Nat
+size = foldl' (\c _ -> c N.+ (S Z)) Z 
 
 member :: forall a. Ord a => Interval a -> Set a -> Bool
 member x (Set set) = mem set

@@ -15,7 +15,7 @@ let
 
     {
       mkDerivation = args: super.mkDerivation (args // {
-        doCheck = pkgs.lib.elem args.pname [ "diet" "quickcheck-classes" ]; 
+        doCheck = pkgs.lib.elem args.pname [ "diet" ]; 
         doHaddock = false;
       });
       quickcheck-classes = cp "quickcheck-classes.nix";
@@ -26,11 +26,3 @@ in rec {
   drv = overrides.${package};
   diet = if pkgs.lib.inNixShell then drv.env else drv;
 }
-
-#  f = import ./nix/diet.nix;
-  
-#  haskellPackages = pkgs.haskell.packages.${compiler};
-
-#  drv = haskellPackages.callPackage f {};
-#in
-#  if pkgs.lib.inNixShell then drv.env else drv

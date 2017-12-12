@@ -1,236 +1,242 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE EmptyDataDecls      #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
 
 module Data.Diet.Set
-  ( -- * Diet type
-    Set(..)
+ ( -- * Diet type
+   Set(..)
 
-    -- * Construction
-  , empty
-  , singleton
-  , insert
-  , delete
+   -- * Construction
+ , empty
+ , singleton
+ , insert
+ , delete
 
-    -- * Combine
-  , union
+   -- * Combine
+ , union
 
-    -- * Query
-  , null
-  , member
-  , notMember
-  , size
+   -- * Query
+ , null
+ , member
+ , notMember
+ --, size
 
-    -- * Conversion
-  , toList
-  , fromList
-  ) where
+   -- * Conversion
+ , toList
+ , fromList
+   
+   -- * Folds
+ , fold
+ , foldMap
+ , foldr
+ , foldr'
+ , foldl
+ , foldl'
+ ) where
 
-import           Control.Applicative (Applicative (..), (<$>), (<*>))
-import           Data.Foldable       (Foldable, toList)
-import           Data.List           (sort)
-import qualified Data.List           as L
+import           Data.Diet.Internal.Debug
+import           Data.Diet.Internal.Interval.Discrete (Interval (..))
+import qualified Data.Diet.Internal.Interval.Discrete as I
+import           Data.Diet.Internal.Nat
+import qualified Data.Diet.Internal.Nat               as N
+import           Data.List                            (sort)
 import           Data.Monoid
-import qualified Data.Semigroup      as S
-import qualified GHC.Exts            as GHCExts
-import           Prelude             hiding (null, (+))
+import qualified Data.Semigroup                       as S
+import qualified GHC.Exts                             as GHCExts
+import           Prelude                              hiding (foldMap, foldl,
+                                                       foldl', foldr, null)
 
-select1 :: Ord a => a -> a -> p -> p -> p -> p
-select1 x y lt eq gt
+select :: Ord a => a -> a -> p -> p -> p -> p
+select x y lt eq gt
   = case compare x y of { LT -> lt; EQ -> eq; GT -> gt }
 
-select2 :: Ord a => a -> a -> a -> p -> p -> p -> p -> p -> p
-select2 x y z xlty xeqy xbtw xeqz xgtz
-  = select1 x y xlty xeqy (select1 x z xbtw xeqz xgtz)
+select' :: Ord a => a -> a -> a -> p -> p -> p -> p -> p -> p
+select' x y z xlty xeqy xbtw xeqz xgtz
+  = select x y xlty xeqy (select x z xbtw xeqz xgtz)
 
-t1 :: T n a -> a -> T n a -> T (S n) a
-t1 a b c = BR (T1 a b c)
+d2 :: Diet n a -> Interval a -> Diet n a -> Diet (S n) a
+d2 a b c     = BR (D2 a b c)
 
-t2 :: T n a -> a -> T n a -> a -> T n a -> T (S n) a
-t2 a b c d e = BR (T2 a b c d e)
-
-data Foo = Foo
-
-data Nat = Z | S Nat | M | P
-  deriving (Eq, Show)
-
-infixl 6 +
-
-(+) :: Nat -> Nat -> Nat
-Z + m = m
-(S n) + m = S (n + m)
-
-instance S.Semigroup Nat where
-  (<>) = (+)
-
-instance Monoid Nat where
-  mempty = Z
-  mappend = (+)
+d3 :: Diet n a -> Interval a -> Diet n a -> Interval a -> Diet n a -> Diet (S n) a
+d3 a b c d e = BR (D3 a b c d e)
 
 data N (n :: Nat) a
-  = T1 (T n a) a (T n a)
-  | T2 (T n a) a (T n a) a (T n a)
+  = D2 (Diet n a) (Interval a) (Diet n a)
+  | D3 (Diet n a) (Interval a) (Diet n a) (Interval a) (Diet n a)
 
-data T (n :: Nat) a where
-  BR :: N n a -> T (S n) a
-  LF :: T Z a
+data Diet (n :: Nat) a where
+  BR :: N n a -> Diet (S n) a
+  LF :: Diet Z a
 
 data Set a where
-  Set :: T n a -> Set a
+  Set :: Diet n a -> Set a
 
-instance (Eq a)  => Eq  (Set a) where
-  t == t' = (size t == size t') && (toList t == toList t')
+instance (Eq a) => Eq (Set a) where
+  t == t' = toList t == toList t' -- && (size t == size t')
 
 instance (Ord a) => Ord (Set a) where
   compare t t' = compare (toList t) (toList t')
 
 instance (Ord a) => Monoid (Set a) where
-  mempty = empty
+  mempty  = empty
   mappend = union
 
 instance (Ord a) => S.Semigroup (Set a) where
   (<>) = union
 
 instance (Ord a) => GHCExts.IsList (Set a) where
-  type Item (Set a) = a
+  type Item (Set a) = Interval a
   fromList = fromList
-  toList   = toList
+  toList = toList
 
-size :: Set a -> Nat
-size = L.foldl' (\c _ -> c + (S Z)) Z
+type Keep d n a = Diet n a -> d
+type Push d n a = Diet n a -> Interval a -> Diet n a -> d
 
--- This implementation is subpar. Currently it only
--- ensures that the smaller of the two Sets is
--- garbage collected, which will give at least some
--- performance boost.
-union :: forall a. Ord a => Set a -> Set a -> Set a
-union t t'
-  | t < t'    = onion t' t
-  | otherwise = onion t t'
+insert :: forall a. Ord a => Interval a -> Set a -> Set a
+insert x (Set set) = ins set Set (\a b c -> Set (d2 a b c))
   where
-    onion :: Set a -> Set a -> Set a
-    onion u v = L.foldl' (flip insert) u (toList v)
-
-type Keep t n a = T n a -> t
-type Push t n a = T n a -> a -> T n a -> t
-
-insert :: forall a. Ord a => a -> Set a -> Set a
-insert x (Set tree) = ins tree Set (\a b c -> Set (t1 a b c))
-  where
-    ins :: forall n t. T n a -> Keep t n a -> Push t n a -> t
-    ins LF = \keep push -> push LF x LF
+    ins :: forall n d. Diet n a -> Keep d n a -> Push d n a -> d
+    ins LF     = \keep push -> push LF x LF
 
     ins (BR n) = i n
       where
-        i :: forall p m. (S p ~ m) => N p a -> Keep t m a -> Push t m a -> t
-        i (T2 a b c d e) keep push = select2 x b d xltb xeqb xbtw xeqd xgtd
+        i :: forall p m. (S p ~ m) => N p a -> Keep d m a -> Push d m a -> d
+        i (D3 a b c d e) keep push = select' x b d xltb xeqb xbtw xeqd xgtd
           where
-            xltb = ins a (\k -> keep (t2 k b c d e)) (\p q r -> push (t1 p q r) b (t1 c d e))
-            xbtw = ins c (\k -> keep (t2 a b k d e)) (\p q r -> push (t1 a b p) q (t1 r d e))
-            xgtd = ins e (\k -> keep (t2 a b c d k)) (\p q r -> push (t1 a b c) d (t1 p q r))
-            xeqb = keep (t2 a x c d e)
-            xeqd = keep (t2 a b c x e)
-
-        i (T1 a b c) keep push = select1 x b xltb xeqb xgtb
+            xltb = ins a (\k -> keep (d3 k b c d e)) (\p q r -> push (d2 p q r) b (d2 c d e))
+            xbtw = ins c (\k -> keep (d3 a b k d e)) (\p q r -> push (d2 a b p) q (d2 r d e))
+            xgtd = ins e (\k -> keep (d3 a b c d k)) (\p q r -> push (d2 a b c) d (d2 p q r))
+            xeqb = keep (d3 a x c d e)
+            xeqd = keep (d3 a x c d e)
+        i (D2 a b c) keep push = select x b xltb xeqb xgtb
           where
-            xltb = ins a (\k -> keep (t1 k b c)) (\p q r -> keep (t2 p q r b c))
-            xgtb = ins c (\k -> keep (t1 a b k)) (\p q r -> keep (t2 a b p q r))
-            xeqb = keep (t1 a x c)
+            xltb = ins a (\k -> keep (d2 k b c)) (\p q r -> keep (d3 p q r b c))
+            xgtb = ins c (\k -> keep (d2 a b k)) (\p q r -> keep (d3 a b p q r))
+            xeqb = keep (d2 a x c)
 
-type Pull t n a = Shrunk n a -> t
+type Pull d n a = Shrunk n a -> d
 
 data Shrunk (n :: Nat) a where
-  H :: T n a -> Shrunk (S n) a
+  H :: Diet n a -> Shrunk (S n) a
 
-delete :: forall a. Ord a => a -> Set a -> Set a
-delete x (Set tree) = search tree Set shrink
+delete :: forall a. Ord a => Interval a -> Set a -> Set a
+delete x (Set set) = search set Set shrink
   where
     shrink :: forall n. Shrunk n a -> Set a
-    shrink (H t) = Set t
+    shrink (H d) = Set d
 
-    search :: forall n t. T n a -> Keep t n a -> Pull t n a -> t
+    search :: forall n d. Diet n a -> Keep d n a -> Pull d n a -> d
     search LF keep pull = keep LF
 
-    search (BR (T1 a b c)) keep pull = select1 x b xltb xeqb xgtb
+    search (BR (D2 a b c)) keep pull = select x b xltb xeqb xgtb
       where
-        xltb, xeqb, xgtb :: t
-        xltb = search a (\k -> keep (t1 k b c)) (\p -> mrgl p b c)
-        xgtb = search c (\k -> keep (t1 a b k)) (\p -> mrg2r keep pull a b p)
-        xeqb = repl a (\k r -> keep (t1 k r c)) (\p r -> mrgl p r c) (pull (H a))
+        xltb, xeqb, xgtb :: d
+        xltb = search a (\k -> keep (d2 k b c)) (\p -> mrgl p b c)
+        xgtb = search c (\k -> keep (d2 a b k)) (\p -> mrg2r keep pull a b p)
+        xeqb = replace a (\k r -> keep (d2 k r c)) (\p r -> mrgl p r c) (pull (H a))
 
-        mrgl :: forall p. (S p ~ n) => Shrunk p a -> a -> T p a -> t
-        mrgl (H a) b (BR (T1 c d e))     = pull (H (t2 a b c d e))
-        mrgl (H a) b (BR (T2 c d e f g)) = keep (t1 (t1 a b c) d (t1 e f g))
+        mrgl :: forall p. (S p ~ n) => Shrunk p a -> Interval a -> Diet p a -> d
+        mrgl (H a) b (BR (D2 c d e))     = pull (H (d3 a b c d e))
+        mrgl (H a) b (BR (D3 c d e f g)) = keep (d2 (d2 a b c) d (d2 e f g))
 
-    search (BR (T2 a b c d e)) keep pull = select2 x b d xltb xeqb xbtw xeqd xgtd
+    search (BR (D3 a b c d e)) keep pull = select' x b d xltb xeqb xbtw xeqd xgtd
       where
-        xltb = search a (\k -> keep (t2 k b c d e)) (\p -> mrgl p b c d e)
-        xbtw = search c (\k -> keep (t2 a b k d e)) (\p -> mrgm a b p d e)
-        xgtd = search e (\k -> keep (t2 a b c d k)) (\p -> mrg3r keep a b c d p)
-        xeqb = repl a (\k r -> keep (t2 k r c d e)) (\p r -> mrgl p r c d e) (keep (t1 c d e))
-        xeqd = repl c (\k r -> keep (t2 a b k r e)) (\p r -> mrgm a b p r e) (keep (t1 a b c))
+        xltb, xeqb, xbtw, xeqd, xgtd :: d
+        xltb = search a (\k -> keep (d3 k b c d e)) (\p -> mrgl p b c d e)
+        xbtw = search c (\k -> keep (d3 a b k d e)) (\p -> mrgm a b p d e)
+        xgtd = search e (\k -> keep (d3 a b c d k)) (\p -> mrg3r keep a b c d p)
+        xeqb = replace a (\k r -> keep (d3 k r c d e)) (\p r -> mrgl p r c d e) (keep (d2 c d e))
+        xeqd = replace c (\k r -> keep (d3 a b k r e)) (\p r -> mrgm a b p r e) (keep (d2 a b c))
 
-        mrgl (H a) b (BR (T2 c d e f g)) h i = keep (t2 (t1 a b c) d (t1 e f g) h i)
-        mrgl (H a) b (BR (T1 c d e)) f g = keep (t1 (t2 a b c d e) f g)
+        mrgl (H a) b (BR (D3 c d e f g)) h i = keep (d3 (d2 a b c) d (d2 e f g) h i)
+        mrgl (H a) b (BR (D2 c d e)) f g     = keep (d2 (d3 a b c d e) f g)
 
-        mrgm a b (H c) d (BR (T2 e f g h i)) = keep (t2 a b (t1 c d e) f (t1 g h i))
-        mrgm a b (H c) d (BR (T1 e f g)) = keep (t1 a b (t2 c d e f g))
+        mrgm a b (H c) d (BR (D3 e f g h i)) = keep (d3 a b (d2 c d e) f (d2 g h i))
+        mrgm a b (H c) d (BR (D2 e f g)) = keep (d2 a b (d3 c d e f g))
 
-    repl :: forall n t. T n a -> Keep (a -> t) n a -> Pull (a -> t) n a -> t -> t
-    repl LF keep pull leaf = leaf
+    replace :: forall n d. Diet n a -> Keep (Interval a -> d) n a -> Pull (Interval a -> d) n a -> d -> d
+    replace LF keep pull leaf = leaf
 
-    repl (BR (T1 a b c)) keep pull leaf
-      = repl c (\k -> keep (t1 a b k)) (\p -> mrg2r keep pull a b p) (pull (H a) b)
+    replace (BR (D2 a b c)) keep pull leaf
+      = replace c (\k -> keep (d2 a b k)) (\p -> mrg2r keep pull a b p) (pull (H a) b)
 
-    repl (BR (T2 a b c d e)) keep pull leaf =
-      repl e (\k -> keep (t2 a b c d k)) (\p -> mrg3r keep a b c d p) (keep (t1 a b c) d)
+    mrg2r :: forall p d. Keep d (S p) a -> Pull d (S p) a -> Diet p a -> Interval a -> Shrunk p a -> d
+    mrg2r keep pull (BR (D2 a b c)) d (H e)     = pull (H (d3 a b c d e))
+    mrg2r keep pull (BR (D3 a b c d e)) f (H g) = keep (d2 (d2 a b c) d (d2 e f g))
 
-    mrg2r :: forall p t. Keep t (S p) a -> Pull t (S p) a -> T p a -> a -> Shrunk p a -> t
-    mrg2r keep pull (BR (T1 a b c)) d (H e) = pull (H (t2 a b c d e))
-    mrg2r keep pull (BR (T2 a b c d e)) f (H g) = keep (t1 (t1 a b c) d (t1 e f g))
+    mrg3r :: forall p d. Keep d (S p) a -> Diet p a -> Interval a -> Diet p a -> Interval a -> Shrunk p a -> d
+    mrg3r keep a b (BR (D3 c d e f g)) h (H i) = keep (d3 a b (d2 c d e) f (d2 g h i))
+    mrg3r keep a b (BR (D2 c d e)) f (H g) = keep (d2 a b (d3 c d e f g))
 
-    mrg3r :: forall p t. Keep t (S p) a -> T p a -> a -> T p a -> a -> Shrunk p a -> t
-    mrg3r keep a b (BR (T2 c d e f g)) h (H i) = keep (t2 a b (t1 c d e) f (t1 g h i))
-    mrg3r keep a b (BR (T1 c d e)) f (H g) = keep (t1 a b (t2 c d e f g))
+union :: forall a. Ord a => Set a -> Set a -> Set a
+union t t' 
+  | t < t' = onion t' t
+  | otherwise = onion t t'
+  where
+    onion :: Set a -> Set a -> Set a
+    onion u v = foldl' (flip insert) u v
 
 empty :: Set a
 empty = Set LF
 
-singleton :: (Ord a) => a -> Set a
-singleton x = insert x empty
+singleton :: (Ord a) => Interval a -> Set a
+singleton x = Set (BR (D2 LF x LF))
 
 null :: Set a -> Bool
 null (Set LF) = True
 null _        = False
 
-member :: forall a. Ord a => a -> Set a -> Bool
-member x (Set tree) = mem tree
+--size :: Set a -> Nat
+--size = foldl' (\_ c -> c N.+ (S Z)) Z
+
+member :: forall a. Ord a => Interval a -> Set a -> Bool
+member x (Set set) = mem set
   where
-    mem :: T n a -> Bool
-    mem (BR (T1 a b c))     = select1 x b (mem a) True (mem c)
-    mem (BR (T2 a b c d e)) = select2 x b d (mem a) True (mem c) True (mem e)
+    mem :: Diet n a -> Bool
+    mem (BR (D2 a b c))     = select x b (mem a) True (mem c)
+    mem (BR (D3 a b c d e)) = select' x b d (mem a) True (mem c) True (mem e)
     mem LF                  = False
 
-notMember :: forall a. Ord a => a -> Set a -> Bool
-notMember x t = not $ member x t
+notMember :: forall a. Ord a => Interval a -> Set a -> Bool
+notMember x s = not $ member x s
 
-fromList :: Ord a => [a] -> Set a
-fromList = L.foldl' (flip insert) empty
+fromList :: forall a. Ord a => [Interval a] -> Set a
+fromList [] = Set LF
+fromList (!x:xs) = insert x $ fromList xs
 
-instance Foldable Set where
-  foldMap = foldm
-    where
-      foldm :: forall m a. Monoid m => (a -> m) -> Set a -> m
-      foldm f (Set t) = fm t
-        where
-          fm :: forall n. T n a -> m
-          fm (BR (T1 a b c))     = fm a <> f b <> fm c
-          fm (BR (T2 a b c d e)) = fm a <> f b <> fm c <> f d <> fm e
-          fm LF                  = mempty
+toList :: Set a -> [Interval a]
+toList = foldMap (\x -> [x])
+
+fold :: (Monoid a, Ord a) => Set a -> Interval a
+fold = foldMap id
+
+foldMap :: forall m a. Monoid m => (Interval a -> m) -> Set a -> m
+foldMap f (Set set) = fm set
+  where
+    fm :: forall n. Diet n a -> m
+    fm (BR (D2 a b c))     = fm a <> f b <> fm c
+    fm (BR (D3 a b c d e)) = fm a <> f b <> fm c <> f d <> fm e
+    fm LF                  = mempty
+
+-- | lazy foldr
+foldr :: (Interval a -> b -> b) -> b -> Set a -> b
+foldr f z s = appEndo (foldMap (Endo . f) s) z
+
+-- | strict foldr
+foldr' :: (Interval a -> b -> b) -> b -> Set a -> b
+foldr' f !z s = foldr f z s
+
+-- | lazy foldl
+foldl :: (a -> Interval b -> a) -> a -> Set b -> a
+foldl f z s = appEndo (getDual (foldMap (Dual . Endo . flip f) s)) z
+
+-- | strict foldl
+foldl' :: (a -> Interval b -> a) -> a -> Set b -> a
+foldl' f !z s = foldl f z s 
 
 instance Show a => Show (Set a) where
-  showsPrec n t = showParen (n > 10) $ showString "fromList " . shows (toList t)
+  showsPrec n d = showParen (n > 10) $ showString "fromList " . shows (toList d)

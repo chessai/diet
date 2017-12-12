@@ -22,7 +22,6 @@ source-repository head
 library
   exposed-modules:
     Data.Diet.Set
-    Data.Interval.Discrete
 
   build-depends:
     base           >= 4.0   && < 5.0,

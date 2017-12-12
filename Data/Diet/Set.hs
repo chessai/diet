@@ -39,8 +39,8 @@ module Data.Diet.Set
  ) where
 
 import           Data.Diet.Internal.Debug
-import           Data.Diet.Internal.Interval.Discrete (Interval (..))
-import qualified Data.Diet.Internal.Interval.Discrete as I
+import           Data.Diet.Interval.Discrete (Interval (..))
+import qualified Data.Diet.Interval.Discrete as I
 import           Data.Diet.Internal.Nat
 import qualified Data.Diet.Internal.Nat               as N
 import           Data.List                            (sort)

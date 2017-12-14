@@ -3,11 +3,11 @@
 }:
 mkDerivation {
   pname = "quickcheck-classes";
-  version = "0.3";
+  version = "0.3.1";
   src = fetchgit {
     url = "https://github.com/andrewthad/quickcheck-classes.git";
-    sha256 = "0zmamrailcplbp44xirs7fsxg7b1x38ds9zyk87dm4lcjpdvzz60";
-    rev = "a102f2b5d40b5baf74fd5846d8c77c13f470bcc2";
+    sha256 = "0wsyqfaa5r0ki9j69aaabnyawa3n6zxasvhag84xc493b5l8db4g";
+    rev = "a31ef48abba4bc6c94f783f472235455c4800da7";
   };
   libraryHaskellDepends = [
     aeson base prim-array primitive QuickCheck transformers

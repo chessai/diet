@@ -22,8 +22,10 @@ source-repository head
 library
   exposed-modules:
     Data.Diet.Set
-    Diet.Diet.Interval.Discrete
-
+    Data.Interval.Discrete
+  other-modules:
+    Data.Diet.Internal.Nat
+    Data.Diet.Internal.Debug
   build-depends:
     base           >= 4.0   && < 5.0,
     distributive   >= 0.2   && < 1.0

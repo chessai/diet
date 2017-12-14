@@ -24,21 +24,24 @@ instance (Enum a, Ord a, Arbitrary a) => Arbitrary (Set a) where
   arbitrary = do
     (i :: [Interval a]) <- arbitrary
     pure $ foldr DS.insert DS.empty i
+  shrink s = map DS.fromList (shrink (toList s))
 
--- p :: (Proxy :: Proxy (Type))
+main :: IO ()
+main = lawsCheckMany allPropsApplied
+
 typeclassProps :: (Ord a, IsList a, Show (Item a), Arbitrary (Item a), Semigroup a, Eq a, Monoid a, Show a, Arbitrary a) => Proxy a -> [Laws]
 typeclassProps p =
-  [ QC.semigroupLaws p
-  , QC.eqLaws p
+  [ QC.eqLaws p
   , QC.commutativeMonoidLaws p
   , ordLaws p
   , isListLaws p 
   --, foldableLaws
   ]
 
-main :: IO ()
-main = do
-  foldMapM lawsCheck (typeclassProps (Proxy :: Proxy (Set Int)))
+allPropsApplied :: [(String,[Laws])]
+allPropsApplied =
+  [ ("Diet Sets",typeclassProps (Proxy :: Proxy (Set Int)))
+  ]
 
 foldMapM :: (Foldable t, Monoid b, Monad m) => (a -> m b) -> t a -> m b
 foldMapM f = foldM (\b a -> fmap (mappend b) (f a)) mempty

@@ -21,17 +21,12 @@ source-repository head
 
 library
   exposed-modules:
-    Data.Diet.Set
-    Data.Interval.Discrete
+    Data.Diet.Map
   other-modules:
-    Data.Diet.Internal.Nat
-    Data.Diet.Internal.Debug
   build-depends:
-    base           >= 4.0   && < 5.0,
-    distributive   >= 0.2   && < 1.0
-
-  if !impl(ghc >=8.0)
-    build-depends: semigroups >= 0.11 && < 1.0
+    base               >= 4.0     && < 5.0,
+    discrete-intervals >= 0.0.3   && <= 0.1.0,
+    transformers       >= 0.4.3.0 && <= 0.5.0.0  
   
   ghc-options:     -Wall -O2
 
@@ -40,7 +35,7 @@ library
 test-suite test
   type:           exitcode-stdio-1.0
   hs-source-dirs: tests
-  main-is:        set-properties.hs
+  main-is:        map-properties.hs
   build-depends:  base
                 , diet
                 , QuickCheck

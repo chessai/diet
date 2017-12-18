@@ -10,6 +10,7 @@ import           Data.Functor.Classes
 import           Data.Interval (Interval(..))
 import qualified Data.Interval as I
 import qualified Data.List     as L
+import qualified Data.Map.Strict as M
 import qualified GHC.Exts      as GHCExts
 
 import Prelude hiding (lookup, map, null, foldr, foldr', foldl, foldl')
@@ -26,9 +27,9 @@ instance (Enum k, Eq k, Ord k, Eq v) => Eq (Map k v) where
 instance (Enum k, Ord k, Ord v) => Ord (Map k v) where
   compare m1 m2 = compare (toAscList m1) (toAscList m2)
 
-instance (Enum k, Ord k) => Monoid (Map k v) where
+instance (Enum k, Ord k, Ord v, Monoid v) => Monoid (Map k v) where
   mempty  = empty
-  mappend = union
+  mappend = onion
   mconcat = unions
 
 instance (Enum k, Ord k) => Functor (Map k) where
@@ -118,8 +119,14 @@ lookup !k (BR _ key _ v l r)
     GT -> lookup k r
     EQ -> Just v
 
+insertAppend :: (Enum k, Ord k, Monoid v) => Interval k -> v -> Map k v -> Map k v
+insertAppend = insertWithKey (\_ x y -> x `mappend` y)
+
 insert :: (Enum k, Ord k) => Interval k -> v -> Map k v -> Map k v
 insert = insertWithKey (\_ v _ -> v)
+
+insertWith :: (Enum k, Ord k) => (v -> v -> v) -> Interval k -> v -> Map k v -> Map k v
+insertWith f = insertWithKey (\_ new old -> f new old)
 
 insertWithKey :: (Enum k, Ord k) => (Interval k -> v -> v -> v) -> Interval k -> v -> Map k v -> Map k v
 insertWithKey f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
@@ -140,6 +147,9 @@ unionWith f m1 m2 = unionWithKey (\_ v1 v2 -> f v1 v2) m1 m2
 
 unionWithKey :: (Enum k, Ord k) => (Interval k -> v -> v -> v) -> Map k v -> Map k v -> Map k v
 unionWithKey f m1 m2 = fromDistinctAscList (ascListUnion f (toAscList m1) (toAscList m2))
+
+onion :: (Enum k, Ord k, Ord v, Monoid v) => Map k v -> Map k v -> Map k v
+onion = (\m m' -> foldlWithKey' ((\f x y z -> f y z x) insertAppend) m m')
 
 unions :: (Enum k, Ord k) => [Map k v] -> Map k v
 unions = unionsWith const
@@ -172,7 +182,6 @@ foldl' f !z (BR _ _ _ x l r) = foldl' f (f (foldl' f z l) x) r
 foldrWithKey :: (Enum k, Ord k) => (Interval k -> v -> a -> a) -> a -> Map k v -> a
 foldrWithKey _ z LF = z
 foldrWithKey f z (BR _ k _ x l r) = foldrWithKey f (f k x (foldrWithKey f z r)) l
-
 
 foldrWithKey' :: (Enum k, Ord k) => (Interval k -> v -> a -> a) -> a -> Map k v -> a
 foldrWithKey' _ !z LF = z
@@ -287,7 +296,7 @@ unwrap' (U' m _) = m
 unwrap' (S' m _) = m
 
 annotate :: Shrunk k v -> a -> ShrunkVal k v a
-annoate  (U m) x = U' m x
+annotate (U m) x = U' m x
 annotate (S m) x = S' m x
 
 delete :: (Enum k, Ord k) => Interval k -> Map k v -> Map k v

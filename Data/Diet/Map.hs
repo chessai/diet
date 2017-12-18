@@ -137,7 +137,7 @@ insertWithKey f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
         GT -> balanceR color k v l (ins r)
         EQ -> BR color k m (f k value v) l r
 
-unionAppend :: (Enum k, Ord k, Ord v, Monoid v) => Map k v -> Map k v -> Map k v
+unionAppend :: (Enum k, Ord k, Eq v, Monoid v) => Map k v -> Map k v -> Map k v
 unionAppend = (\m m' -> foldlWithKey' ((\f x y z -> f y z x) insertAppend) m m')
 
 union :: (Enum k, Ord k) => Map k v -> Map k v -> Map k v

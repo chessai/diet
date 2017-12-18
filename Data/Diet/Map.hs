@@ -27,7 +27,7 @@ instance (Enum k, Eq k, Ord k, Eq v) => Eq (Map k v) where
 instance (Enum k, Ord k, Ord v) => Ord (Map k v) where
   compare m1 m2 = compare (toAscList m1) (toAscList m2)
 
-instance (Enum k, Ord k, Ord v, Monoid v) => Monoid (Map k v) where
+instance (Enum k, Ord k, Eq v, Monoid v) => Monoid (Map k v) where
   mempty  = empty
   mappend = unionAppend
   mconcat = unions

@@ -29,7 +29,7 @@ instance (Enum k, Ord k, Ord v) => Ord (Map k v) where
 
 instance (Enum k, Ord k, Ord v, Monoid v) => Monoid (Map k v) where
   mempty  = empty
-  mappend = onion
+  mappend = unionAppend
   mconcat = unions
 
 instance (Enum k, Ord k) => Functor (Map k) where
@@ -70,17 +70,15 @@ singleton k v = BR B k k v LF LF
 
 mNode :: (Enum k, Ord k) => Color -> Interval k -> v -> Map k v -> Map k v -> Map k v
 mNode c k v l r = BR c k (maxUpper k l r) v l r
-
-maxUpper :: (Enum k, Ord k) => Interval k -> Map k v -> Map k v -> Interval k
-maxUpper k LF LF = k
-maxUpper k LF (BR _ _ m _ _ _) = (\x y -> if I.sup x >= I.sup y then x else y) k m
-maxUpper k (BR _ _ m _ _ _) LF = (\x y -> if I.sup x >= I.sup y then x else y) k m
-maxUpper k (BR _ _ l _ _ _) (BR _ _ r _ _ _) = g k (g l r)
   where
-    g :: (Enum k, Ord k) => Interval k -> Interval k -> Interval k
-    g x y
-      | I.sup x >= I.sup y = x
-      | otherwise = y
+    maxUpper :: (Enum k, Ord k) => Interval k -> Map k v -> Map k v -> Interval k
+    maxUpper k LF LF = k
+    maxUpper k LF (BR _ _ m _ _ _) = potentialBeyonceBetrayal k m
+    maxUpper k (BR _ _ m _ _ _) LF = potentialBeyonceBetrayal k m
+    maxUpper k (BR _ _ l _ _ _) (BR _ _ r _ _ _) = potentialBeyonceBetrayal k (potentialBeyonceBetrayal l r)
+    
+    potentialBeyonceBetrayal :: (Enum k, Ord k) => Interval k -> Interval k -> Interval k
+    potentialBeyonceBetrayal = (\x y -> if I.sup x >= I.sup y then x else y)
 
 null :: Map k v -> Bool
 null LF = True
@@ -139,6 +137,9 @@ insertWithKey f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
         GT -> balanceR color k v l (ins r)
         EQ -> BR color k m (f k value v) l r
 
+unionAppend :: (Enum k, Ord k, Ord v, Monoid v) => Map k v -> Map k v -> Map k v
+unionAppend = (\m m' -> foldlWithKey' ((\f x y z -> f y z x) insertAppend) m m')
+
 union :: (Enum k, Ord k) => Map k v -> Map k v -> Map k v
 union m1 m2 = unionWithKey (\_ v _ -> v) m1 m2
 
@@ -148,8 +149,8 @@ unionWith f m1 m2 = unionWithKey (\_ v1 v2 -> f v1 v2) m1 m2
 unionWithKey :: (Enum k, Ord k) => (Interval k -> v -> v -> v) -> Map k v -> Map k v -> Map k v
 unionWithKey f m1 m2 = fromDistinctAscList (ascListUnion f (toAscList m1) (toAscList m2))
 
-onion :: (Enum k, Ord k, Ord v, Monoid v) => Map k v -> Map k v -> Map k v
-onion = (\m m' -> foldlWithKey' ((\f x y z -> f y z x) insertAppend) m m')
+unionsAppend :: (Enum k, Ord k, Monoid v) => [Map k v] -> Map k v
+unionsAppend = unionsWith mappend
 
 unions :: (Enum k, Ord k) => [Map k v] -> Map k v
 unions = unionsWith const

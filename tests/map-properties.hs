@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Monad           (foldM)
 import           Data.Diet.Map           (Map (..))
 import qualified Data.Diet.Map           as DM
 import           Data.Foldable           (foldr)
@@ -32,7 +31,20 @@ instance (Enum k, Ord k, Enum v, Ord v, Arbitrary k, Arbitrary v) => Arbitrary (
   shrink s = map DM.fromList (shrink (DM.toList s))
 
 main :: IO ()
-main = lawsCheckMany allPropsApplied
+main = do
+  props
+  quickCheck prop_logarithmic
+
+props :: IO ()
+props = lawsCheckMany allPropsApplied
+
+prop_logarithmic :: Map Int Int -> Bool
+prop_logarithmic m = (h <= DM.maxHeight n) && n <= DM.maxNodes h
+  where
+    n :: Int
+    n = DM.size m
+    h :: Int
+    h = DM.height m
 
 typeclassProps :: (Ord a, IsList a, Show (Item a), Arbitrary (Item a), Eq a, Monoid a, Show a, Arbitrary a) => Proxy a -> [Laws]
 typeclassProps p =

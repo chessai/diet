@@ -10,7 +10,6 @@ import           Data.Functor.Classes
 import           Data.Interval (Interval(..))
 import qualified Data.Interval as I
 import qualified Data.List     as L
-import qualified Data.Map.Strict as M
 import qualified GHC.Exts      as GHCExts
 
 import Prelude hiding (lookup, map, null, foldr, foldr', foldl, foldl')
@@ -27,7 +26,7 @@ instance (Enum k, Eq k, Ord k, Eq v) => Eq (Map k v) where
 instance (Enum k, Ord k, Ord v) => Ord (Map k v) where
   compare m1 m2 = compare (toAscList m1) (toAscList m2)
 
-instance (Enum k, Ord k, Ord v, Monoid v) => Monoid (Map k v) where
+instance (Enum k, Ord k, Eq v, Monoid v) => Monoid (Map k v) where
   mempty  = empty
   mappend = unionAppend
   mconcat = unions
@@ -78,21 +77,42 @@ mNode c k v l r = BR c k (maxUpper k l r) v l r
     maxUpper k (BR _ _ l _ _ _) (BR _ _ r _ _ _) = potentialBeyonceBetrayal k (potentialBeyonceBetrayal l r)
     
     potentialBeyonceBetrayal :: (Enum k, Ord k) => Interval k -> Interval k -> Interval k
-    potentialBeyonceBetrayal = (\x y -> if I.sup x >= I.sup y then x else y)
+    potentialBeyonceBetrayal = \x y -> if I.sup x >= I.sup y then x else y
 
 null :: Map k v -> Bool
 null LF = True
 null _  = False
 {-# INLINE null #-}
 
+-- /BEGIN TESTING
 size :: Map k v -> Int
-size m = go 0 m
+size = go 0
   where
     go !p q
       = case q of
         LF -> p
         BR _ _ _ _ l r -> go (go p l + 1) r
 {-# INLINE size #-}
+
+height :: Map k v -> Int
+height LF = 0
+height (BR _ _ _ _ l r) = 1 + max (height l) (height r)
+
+maxHeight :: Int -- ^ Number of nodes 
+          -> Int
+maxHeight nodes = 2 * log2 (nodes + 1)
+
+maxNodes :: Int -- ^ Height
+         -> Int
+maxNodes k = 2 ^ (2 * k) - 1
+
+showStats :: Map k v -> IO ()
+showStats m = do
+  putStrLn $ "n = Nodes:      " ++ show n
+  putStrLn $ "h = Height:     " ++ show (height m)
+  putStrLn $ "r = Max Height: " ++ show (maxHeight n)
+  where n = size m
+-- \END TESTING
 
 isRed :: Map k v -> Bool
 isRed (BR R _ _ _ _ _) = True
@@ -117,8 +137,42 @@ lookup !k (BR _ key _ v l r)
     GT -> lookup k r
     EQ -> Just v
 
-insertAppend :: (Enum k, Ord k, Monoid v) => Interval k -> v -> Map k v -> Map k v
+insertAppend :: (Enum k, Ord k, Eq v, Monoid v) => Interval k -> v -> Map k v -> Map k v
 insertAppend = insertWithKey (\_ x y -> x `mappend` y)
+
+--insertAppend' :: (Enum k, Ord k, Eq v) => Interval k -> v -> Map k v -> Map k v
+--insertAppend = undefined
+
+--data O = L | E | G | LLeft | GRight | Subsumes | Contained
+
+--cmpI :: (Ord a) => Interval a -> Interval a -> O
+--cmpI (I a b) (I x y)
+--  | a == x && b == y = E
+--  | b >= y && a <= x = Subsumes
+--  | b <= y && a >= x = Contained
+--  | b <= y && a <= x = LLeft
+--  | b >= y && a >= x = GRight
+--  | b <= y && a /= x = L
+--  | b >= y && a /= x = G 
+
+
+--insert'' :: (Enum k, Ord k, Eq v, Monoid v) => Interval k -> v -> Map k v -> Map k v
+--insert'' m m' = 
+
+--insertWithKeyAppend :: (Enum k, Ord k, Eq v, Monoid v) => (Interval k -> v -> v -> v) -> Interval k -> v -> Map k v -> Map k v
+--insertWithKeyAppend f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
+--  where
+--    singletonRed k v = BR R k k v LF LF
+--    ins LF = singletonRed key value
+--    ins (BR color k m v l r) =
+--      case cmpI key k of
+--        Subsumes -> BR color k m (f k value v) (ins l) (ins r) 
+--        LLeft -> BR color k m (f k value v) (ins l) r
+--        GRight -> BR color k m (f k value v) l (ins r)
+--        L -> balanceL color k v (ins l) r
+--        G -> balanceR color k v l (ins r)
+--        E -> BR color k m (f k value v) l r
+--        Contained -> BR color k m (f k value v) l r
 
 insert :: (Enum k, Ord k) => Interval k -> v -> Map k v -> Map k v
 insert = insertWithKey (\_ v _ -> v)
@@ -137,14 +191,14 @@ insertWithKey f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
         GT -> balanceR color k v l (ins r)
         EQ -> BR color k m (f k value v) l r
 
-unionAppend :: (Enum k, Ord k, Ord v, Monoid v) => Map k v -> Map k v -> Map k v
-unionAppend = (\m m' -> foldlWithKey' ((\f x y z -> f y z x) insertAppend) m m')
+unionAppend :: (Enum k, Ord k, Eq v, Monoid v) => Map k v -> Map k v -> Map k v
+unionAppend = foldlWithKey' ((\f x y z -> f y z x) insertAppend)
 
 union :: (Enum k, Ord k) => Map k v -> Map k v -> Map k v
-union m1 m2 = unionWithKey (\_ v _ -> v) m1 m2
+union = unionWithKey (\_ v _ -> v) 
 
 unionWith :: (Enum k, Ord k) => (v -> v -> v) -> Map k v -> Map k v -> Map k v
-unionWith f m1 m2 = unionWithKey (\_ v1 v2 -> f v1 v2) m1 m2
+unionWith f = unionWithKey (\_ v1 v2 -> f v1 v2)
 
 unionWithKey :: (Enum k, Ord k) => (Interval k -> v -> v -> v) -> Map k v -> Map k v -> Map k v
 unionWithKey f m1 m2 = fromDistinctAscList (ascListUnion f (toAscList m1) (toAscList m2))
@@ -162,7 +216,7 @@ unionsWith f ms = fromDistinctAscList (head (go (L.map toAscList ms)))
   where
     go [] = []
     go xs@[_] = xs
-    go (x:y:xs) = go ((\m1 m2 -> ascListUnion (\x y z -> f y z) m1 m2) x y : go xs)
+    go (x:y:xs) = go (ascListUnion (\x y z -> f y z) x y : go xs)
 
 foldr :: (Enum k, Ord k) => (a -> b -> b) -> b -> Map k a -> b
 foldr _ z LF = z
@@ -276,7 +330,7 @@ isPerfect :: Int -> Bool
 isPerfect n = (n .&. (n + 1)) == 0
 
 log2 :: Int -> Int
-log2 m = go (-1) m
+log2 = go (-1)
   where
     go !p q
       | q <= 0 = p

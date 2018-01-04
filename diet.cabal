@@ -38,8 +38,13 @@ test-suite test
   type:           exitcode-stdio-1.0
   hs-source-dirs: tests
   main-is:        map-properties.hs
-  build-depends:  base
-                , diet
-                , QuickCheck
-                , quickcheck-classes
+  build-depends:
+      base
+    , diet
+    , QuickCheck
+    , quickcheck-classes
+    , discrete-intervals
+    , random
+    , random-shuffle
+    , MonadRandom
   default-language: Haskell2010

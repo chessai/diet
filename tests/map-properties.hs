@@ -12,6 +12,11 @@ import           Data.Semigroup          (Semigroup (..))
 import           GHC.Exts                (IsList(..))
 import           Test.QuickCheck
 import           Test.QuickCheck.Classes as QC
+import           System.Random           (mkStdGen)
+import           System.Random.Shuffle   (shuffleM)
+import           Control.Monad.Random    (evalRand)
+import           Control.Exception       (Exception,toException)
+import           Test.QuickCheck.Property (exception)
 
 instance Monoid Int where
   mempty  = 0
@@ -34,6 +39,7 @@ main :: IO ()
 main = do
   props
   quickCheck prop_logarithmic
+  quickCheck prop_collapse
 
 props :: IO ()
 props = lawsCheckMany allPropsApplied
@@ -45,6 +51,22 @@ prop_logarithmic m = (h <= DM.maxHeight n) && n <= DM.maxNodes h
     n = DM.size m
     h :: Int
     h = DM.height m
+
+prop_collapse :: Property
+prop_collapse = forAll (choose (0,1000000)) $ \seed -> do
+  let elems0 = enumFromTo (1 :: Int) (12 :: Int)
+  let elems1 = evalRand (shuffleM elems0) (mkStdGen seed)
+  let sz = DM.size (DM.fromList (map (\x -> (I.singleton x,())) elems1))
+  if sz == 1
+    then property True
+    else do
+      let msg = "fromList " ++ show elems1 ++ " produces map of size " ++ show sz
+      property $ exception msg (toException PropCollapseException)
+
+data PropCollapseException = PropCollapseException
+  deriving (Show,Eq)
+
+instance Exception PropCollapseException
 
 typeclassProps :: (Ord a, IsList a, Show (Item a), Arbitrary (Item a), Eq a, Monoid a, Show a, Arbitrary a) => Proxy a -> [Laws]
 typeclassProps p =

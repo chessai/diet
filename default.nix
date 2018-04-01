@@ -2,8 +2,8 @@
 let
   fetchNixpkgs = import ./nix/fetchNixpkgs.nix;
   nixpkgs = fetchNixpkgs {
-    rev = "597f819bc3dc1097a8daea632b51a7c065127b1f";
-    sha256 = "1xzrgvhf0884s2ic88p7z14wzdp5sa454f028l5jw3290sd391bi";
+    rev = "01705125314fa0c7753f27c3dd7c4bfbda55c375"; 
+    sha256 = "1a96vb4hlhnadm445lifq02wg2vz0a2hyxrcl6d0jy2cn7427aq6"; 
   };
   pkgs = import nixpkgs { config = {}; };
   inherit (pkgs) haskell;
@@ -28,15 +28,18 @@ let
          };
 
     {
-      mkDerivation = args: super.mkDerivation (args // {
-        doCheck = pkgs.lib.elem args.pname [ "diet" ]; 
-        doHaddock = false;
-      });
+      #mkDerivation = args: super.mkDerivation (args // {
+        #  doCheck = pkgs.lib.elem args.pname [ "diet" ]; 
+        # doHaddock = false;
+        #});
       
       quickcheck-classes = cp "quickcheck-classes";
       discrete-intervals = cp "discrete-intervals"; 
 
-      diet = build "diet" ./.;
+      diet = overrideCabal (build "diet" ./.) (drv: {
+        doCheck = false;
+        doHaddock = false;
+      });
     };
   };
 in rec {

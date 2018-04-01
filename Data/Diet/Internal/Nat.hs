@@ -8,6 +8,8 @@
 
 module Data.Diet.Internal.Nat where
 
+import Data.Kind hiding ( type (*) )
+
 data Nat = Z | S Nat
 
 infixl 6 +,-
@@ -35,3 +37,13 @@ type family Max (n :: Nat) (m :: Nat) :: Nat where
   Max Z Z = Z
   Max (S n) Z = S n
   Max (S n) (S m) = S (Max n m)
+
+data SNat :: Nat -> Type where
+  SZ :: SNat Z
+  SS :: SNat n -> SNat (S n)
+
+data Gte :: Nat -> Nat -> Type where
+  GteEq :: Gte n n
+  GteGt :: Gte n m -> Gte (S n) m
+
+

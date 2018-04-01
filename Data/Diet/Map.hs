@@ -20,6 +20,27 @@ data Color = R | B
 data Map k v = BR !Color !(Interval k) !(Interval k) v !(Map k v) !(Map k v)
              | LF
 
+collapse :: (Enum k, Ord k, Eq v) => [(Interval k, v)] -> [(Interval k, v)]
+collapse [] = []
+collapse [x] = [x]
+collapse !xs = go (sortDesc xs)
+  where
+    go (x:y:ys) =
+      case (snd x == snd y) of
+        True  -> case (fst x I.++? fst y) of
+                   True  -> (fst x `I.hull` fst y, snd x) : collapse ys
+                   False -> x : collapse (y : ys)
+        False -> x : y : collapse ys
+
+sortDesc :: (Enum k, Ord k) => [(Interval k, v)] -> [(Interval k, v)]
+sortDesc = L.sortBy go
+  where
+    go u v
+      | f u < f v = GT
+      | f u > f v = LT
+      | otherwise = EQ
+    f = I.inf . fst
+
 instance (Enum k, Eq k, Ord k, Eq v) => Eq (Map k v) where
   m1 == m2 = toAscList m1 == toAscList m2
 
@@ -51,12 +72,12 @@ instance (Enum k, Ord k) => Traversable (Map k) where
   traverse f (BR c k m v l r)
     = flip (BR c k m) <$> traverse f l <*> f v <*> traverse f r
 
-instance (Enum k, Ord k) => GHCExts.IsList (Map k v) where
+instance (Enum k, Ord k, Eq v) => GHCExts.IsList (Map k v) where
   type Item (Map k v) = (Interval k, v)
   fromList = fromList
   toList   = toList
 
-instance (Enum k, Ord k, Show k, Show v) => Show (Map k v) where
+instance (Enum k, Ord k, Show k, Show v, Eq v) => Show (Map k v) where
   showsPrec n d = showParen (n > 10) $ showString "fromList " . shows (toList d)
 
 empty :: Map k v
@@ -77,7 +98,7 @@ mNode c k v l r = BR c k (maxUpper k l r) v l r
     maxUpper k (BR _ _ l _ _ _) (BR _ _ r _ _ _) = potentialBeyonceBetrayal k (potentialBeyonceBetrayal l r)
     
     potentialBeyonceBetrayal :: (Enum k, Ord k) => Interval k -> Interval k -> Interval k
-    potentialBeyonceBetrayal = \x y -> if I.sup x >= I.sup y then x else y
+    potentialBeyonceBetrayal x y = if I.sup x >= I.sup y then x else y
 
 null :: Map k v -> Bool
 null LF = True
@@ -140,40 +161,6 @@ lookup !k (BR _ key _ v l r)
 insertAppend :: (Enum k, Ord k, Eq v, Monoid v) => Interval k -> v -> Map k v -> Map k v
 insertAppend = insertWithKey (\_ x y -> x `mappend` y)
 
---insertAppend' :: (Enum k, Ord k, Eq v) => Interval k -> v -> Map k v -> Map k v
---insertAppend = undefined
-
---data O = L | E | G | LLeft | GRight | Subsumes | Contained
-
---cmpI :: (Ord a) => Interval a -> Interval a -> O
---cmpI (I a b) (I x y)
---  | a == x && b == y = E
---  | b >= y && a <= x = Subsumes
---  | b <= y && a >= x = Contained
---  | b <= y && a <= x = LLeft
---  | b >= y && a >= x = GRight
---  | b <= y && a /= x = L
---  | b >= y && a /= x = G 
-
-
---insert'' :: (Enum k, Ord k, Eq v, Monoid v) => Interval k -> v -> Map k v -> Map k v
---insert'' m m' = 
-
---insertWithKeyAppend :: (Enum k, Ord k, Eq v, Monoid v) => (Interval k -> v -> v -> v) -> Interval k -> v -> Map k v -> Map k v
---insertWithKeyAppend f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
---  where
---    singletonRed k v = BR R k k v LF LF
---    ins LF = singletonRed key value
---    ins (BR color k m v l r) =
---      case cmpI key k of
---        Subsumes -> BR color k m (f k value v) (ins l) (ins r) 
---        LLeft -> BR color k m (f k value v) (ins l) r
---        GRight -> BR color k m (f k value v) l (ins r)
---        L -> balanceL color k v (ins l) r
---        G -> balanceR color k v l (ins r)
---        E -> BR color k m (f k value v) l r
---        Contained -> BR color k m (f k value v) l r
-
 insert :: (Enum k, Ord k) => Interval k -> v -> Map k v -> Map k v
 insert = insertWithKey (\_ v _ -> v)
 
@@ -194,22 +181,22 @@ insertWithKey f !key value mp = bool mp (turnBlack (ins mp)) (I.valid key)
 unionAppend :: (Enum k, Ord k, Eq v, Monoid v) => Map k v -> Map k v -> Map k v
 unionAppend = foldlWithKey' ((\f x y z -> f y z x) insertAppend)
 
-union :: (Enum k, Ord k) => Map k v -> Map k v -> Map k v
+union :: (Enum k, Ord k, Eq v) => Map k v -> Map k v -> Map k v
 union = unionWithKey (\_ v _ -> v) 
 
-unionWith :: (Enum k, Ord k) => (v -> v -> v) -> Map k v -> Map k v -> Map k v
+unionWith :: (Enum k, Ord k, Eq v) => (v -> v -> v) -> Map k v -> Map k v -> Map k v
 unionWith f = unionWithKey (\_ v1 v2 -> f v1 v2)
 
-unionWithKey :: (Enum k, Ord k) => (Interval k -> v -> v -> v) -> Map k v -> Map k v -> Map k v
+unionWithKey :: (Enum k, Ord k, Eq v) => (Interval k -> v -> v -> v) -> Map k v -> Map k v -> Map k v
 unionWithKey f m1 m2 = fromDistinctAscList (ascListUnion f (toAscList m1) (toAscList m2))
 
-unionsAppend :: (Enum k, Ord k, Monoid v) => [Map k v] -> Map k v
+unionsAppend :: (Enum k, Ord k, Eq v, Monoid v) => [Map k v] -> Map k v
 unionsAppend = unionsWith mappend
 
-unions :: (Enum k, Ord k) => [Map k v] -> Map k v
+unions :: (Enum k, Ord k, Eq v) => [Map k v] -> Map k v
 unions = unionsWith const
 
-unionsWith :: (Enum k, Ord k) => (v -> v -> v) -> [Map k v] -> Map k v
+unionsWith :: (Enum k, Ord k, Eq v) => (v -> v -> v) -> [Map k v] -> Map k v
 unionsWith _ [] = empty
 unionsWith _ [m] = m
 unionsWith f ms = fromDistinctAscList (head (go (L.map toAscList ms)))
@@ -259,17 +246,17 @@ mapWithKey f = go
     go LF = LF
     go (BR c k m v l r) = BR c k m (f k v) (go l) (go r)
 
-toAscList :: (Enum k, Ord k) => Map k v -> [(Interval k,v)]
+toAscList :: (Enum k, Ord k, Eq v) => Map k v -> [(Interval k,v)]
 toAscList = foldrWithKey (\k v r -> (k,v) : r) []
 
-toDescList :: (Enum k, Ord k) => Map k v -> [(Interval k,v)]
+toDescList :: (Enum k, Ord k, Eq v) => Map k v -> [(Interval k,v)]
 toDescList = foldlWithKey (\r k v -> (k,v) : r) []
 
-toList :: (Enum k, Ord k) => Map k v -> [(Interval k, v)]
+toList :: (Enum k, Ord k, Eq v) => Map k v -> [(Interval k, v)]
 toList = toAscList
 
-fromList :: (Enum k, Ord k) => [(Interval k,v)] -> Map k v
-fromList = L.foldl' (\m (k,v) -> insert k v m) empty 
+fromList :: (Enum k, Ord k, Eq v) => [(Interval k,v)] -> Map k v
+fromList = (L.foldl' (\m (k,v) -> insert k v m) empty) 
 
 ascListUnion :: (Enum k, Ord k) => (Interval k -> a -> a -> a) -> [(Interval k, a)] -> [(Interval k, a)] -> [(Interval k, a)]
 ascListUnion _ [] [] = []

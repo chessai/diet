@@ -20,6 +20,20 @@ import           Data.Monoid (Monoid(..))
 import           Data.Semigroup (Semigroup)
 import           Prelude (Enum(..), Functor(..), Ord(..), (&&), Int, flip)
 
+
+data Leaf k v = L !(Interval k) v
+  deriving (Eq)
+
+data Map' k v where
+  Empty :: Map k v
+  LF    :: (Leaf k v) -> v -> Map k v
+  BR    :: Size -> Interval k -> v -> Map k v
+
+--data Map k v
+--  = Empty
+--  | Leaf !(Leaf k v) v
+--  | BR {-# UNPACK #-} !Size !(Interval k) v !(Map k v)
+
 -- Leaves store all the values.
 -- Branches store an interval whose endpoints contain information about the subtrees.
 --

@@ -1,14 +1,13 @@
 { package ? "diet", compiler ? "ghc822" }:
-let
-  fetchNixpkgs = import ./nix/fetchNixpkgs.nix;
-  nixpkgs = fetchNixpkgs {
-    rev = "01705125314fa0c7753f27c3dd7c4bfbda55c375"; 
-    sha256 = "1a96vb4hlhnadm445lifq02wg2vz0a2hyxrcl6d0jy2cn7427aq6"; 
-  };
-  pkgs = import nixpkgs { config = {}; };
-  inherit (pkgs) haskell;
-
-  
+let fetchNixpkgs = import ./nix/fetchNixpkgs.nix;
+    nixpkgs = fetchNixpkgs {
+      rev = "c484079ac7b4cf003f6b09e64cde59cb9a98b923";
+      sha256 = "0sh4f8w30sya7vydwm86dni1ylz59hiq627df1dv1zg7riq036cw";
+      sha256unpacked = "0fc6y2yjlfbss7cq7lgah0xvlnyas5v3is9r5bxyyp7rkwlyvny4";
+    };
+    pkgs = import nixpkgs { config = {}; overlays = []; };
+    inherit (pkgs) haskell;
+ 
   filterPredicate = p: type:
     let path = baseNameOf p; in !(
        (type == "directory" && path == "dist")
@@ -26,20 +25,9 @@ let
     with { cp = file: (self.callPackage (./nix/haskell + "/${file}.nix") {}); 
            build = name: path: self.callCabal2nix name (builtins.filterSource filterPredicate path) {}; 
          };
-
     {
-      #mkDerivation = args: super.mkDerivation (args // {
-        #  doCheck = pkgs.lib.elem args.pname [ "diet" ]; 
-        # doHaddock = false;
-        #});
-      
-      quickcheck-classes = cp "quickcheck-classes";
-      discrete-intervals = cp "discrete-intervals"; 
-
-      diet = overrideCabal (build "diet" ./.) (drv: {
-        doCheck = false;
-        doHaddock = false;
-      });
+      semirings = cp "semirings"; 
+      diet = build "diet" ./.;
     };
   };
 in rec {
